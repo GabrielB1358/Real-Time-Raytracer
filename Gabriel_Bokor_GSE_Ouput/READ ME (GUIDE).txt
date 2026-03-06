@@ -1,0 +1,6 @@
+w,a,s,d - Movement
+mouse control - looking around
+tab - toggle focus on GUI or scene
+space - descend
+lctrl - ascend
+lshidt - hold while moving for a speed boost

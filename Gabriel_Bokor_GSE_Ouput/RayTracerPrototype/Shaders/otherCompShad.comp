@@ -1,0 +1,549 @@
+#version 460 core
+#define M_PI 3.1415926535897932384626433832795
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(rgba32f, binding = 0) uniform writeonly image2D u_Texture;
+layout(binding = 1) buffer cameraData
+{
+	mat4 TransformMat;
+	float RandomNumber;
+	float AASampleSize;
+	float SSSampleSize;
+	float GISampleSize;
+
+	float lightOffset;
+
+	int doReflect;
+	int doSS;
+	int doGI;
+
+	vec3 lightColour;
+	int sceneChoice;
+	int objectCount;
+} bufferInstance; //SSBO for important data from outside the shader
+
+vec3 lightPosition = vec3(8, (10 + bufferInstance.lightOffset), 0);
+vec3 lightColour = bufferInstance.lightColour;
+float lightSphereRadius = 3.5;
+
+float AASamples = bufferInstance.AASampleSize;
+float ShadSamples = bufferInstance.SSSampleSize / bufferInstance.AASampleSize;
+float GISamples = bufferInstance.GISampleSize;
+float Seed = bufferInstance.RandomNumber;
+
+//Intersection info struct
+struct intersectInfo
+{
+	bool m_didIntersect;
+	vec3 m_intersectPos;
+	vec3 m_surfaceNormal;
+};
+
+//Scene object struct
+struct Object
+{
+	vec3 m_pos;
+	vec3 m_col;
+	vec3 m_norm;
+
+	float m_rad;
+	float m_shininess;
+	float m_diffuse;
+	float m_reflectivity;
+
+	int m_type;
+
+	intersectInfo m_info;
+};
+
+Object sceneObjects[8];
+
+//Calculates a random number given a seed and another factor
+float randNumGen(float _x)
+{
+	Seed *= 1.02;
+	return fract(sin(_x) * 43758.5453 + Seed);
+	//use "frag coord" as x
+}
+
+//Calculate shortest distance from the ray to the centre of the sphere
+float calculateD(vec3 _origin, vec3 _direction, Object _obj)
+{
+	return length(_obj.m_pos - _origin - (dot(_obj.m_pos - _origin, _direction) * _direction));
+}
+
+//Calculates the distance from the closest point on the ray to the intersection point
+float calculateX(vec3 _origin, vec3 _direction, Object _obj)
+{
+	return sqrt(pow(_obj.m_rad, 2.0) - pow(calculateD(_origin, _direction, _obj), 2.0));
+}
+
+float facing(vec3 _surfaceNorm, vec3 _lightDir)
+{
+	if(dot(_surfaceNorm, _lightDir) > 0)
+		return 1.0;
+	else
+		return 0.0;
+}
+
+//Caculates specular colour for a given point
+vec3 SpecularColor(intersectInfo _info, vec3 _lightDir, vec3 _origin, vec3 _direction, int _index)
+{
+	if(facing(_info.m_surfaceNormal, _lightDir) == 0)
+	{	
+		return vec3(0);
+	}
+
+	//Blinn Phong specular equation
+	vec3 halfVec = normalize(_lightDir + (-_direction));
+	
+	vec3 specLight = lightColour * pow(max(dot(_info.m_surfaceNormal, halfVec), 0.0), sceneObjects[_index].m_shininess);
+	return specLight;
+}
+
+//Gets a random point on the light sphere
+vec3 getRandomPointOnLight()
+{
+	//Generate 3 random nums between 0-1
+	vec3 pos = vec3(randNumGen(gl_GlobalInvocationID.x), randNumGen(gl_GlobalInvocationID.y), randNumGen(gl_GlobalInvocationID.x + gl_GlobalInvocationID.y));
+	pos = ((pos * 2.0) - 1.0) * lightSphereRadius;
+
+	return lightPosition + pos;
+}
+
+//Tests for intersections between ray-sphere and ray-plane
+#pragma optionNV(unroll all)
+Object::intersectInfo testIntersection(vec3 _origin, vec3 _direction, Object _obj)
+{
+	_obj.m_info.m_didIntersect = false;
+	
+	//If type == sphere
+	if(_obj.m_type == 0)
+	{
+		//check if ray origin is inside sphere
+		if((length(_obj.m_pos - _origin) < _obj.m_rad))
+		{
+			return _obj.m_info;
+		}
+
+		float d = calculateD(_origin, _direction, _obj);
+
+		//calculate shortest distance to spheres center
+		if(d <= _obj.m_rad)
+		{
+			float x = calculateX(_origin, _direction, _obj);
+
+			float td = (dot((_obj.m_pos - _origin), _direction) - x);
+			if(td > 0.0)
+			{
+				_obj.m_info.m_intersectPos = _origin + (td * _direction);
+				_obj.m_info.m_surfaceNormal = normalize(_obj.m_info.m_intersectPos - _obj.m_pos);
+				_obj.m_info.m_didIntersect = true;
+			}
+		}
+	}
+	else if(_obj.m_type == 1)
+	{
+		if(dot(normalize(_direction), _obj.m_norm) >= 0.0)
+		{
+			return _obj.m_info;
+		}
+
+		_obj.m_info.m_intersectPos = _origin + ((dot(_obj.m_pos - _origin, _obj.m_norm) / dot(normalize(_direction), _obj.m_norm)) * normalize(_direction));
+		_obj.m_info.m_didIntersect = true;
+		_obj.m_info.m_surfaceNormal = _obj.m_norm;
+	}
+
+	return _obj.m_info;
+}
+
+#pragma optionNV(unroll all)
+vec3 traceRay(vec3 _origin, vec3 _direction)
+{
+	//					====== INTERSECTION CHECK ======
+	intersectInfo finalInfo;
+	int index = 0;
+	float objDistance = 999999999.0;
+	bool intersected = false;
+	vec3 shade = vec3(0, 0, 0);
+
+	for(int i = 0; i < bufferInstance.objectCount; i++)
+	{
+		intersectInfo tempI = testIntersection(_origin, _direction, sceneObjects[i]);
+		if(tempI.m_didIntersect)
+		{
+			intersected = true;
+			float tempD = distance(_origin, tempI.m_intersectPos);
+			if(tempD < objDistance)
+			{
+				objDistance = tempD;
+				finalInfo = tempI;
+				index = i;
+			}
+		}
+	}
+	
+	if(intersected && index !=0)
+	{
+		//					===== REFLECTIONS =====
+		vec3 reflectCol = vec3(0);
+		vec3 newDir;
+
+		if(sceneObjects[index].m_reflectivity > 0 && bufferInstance.doReflect == 1)
+		{
+			reflectCol = vec3(0);
+			newDir = _direction - (2.0 * finalInfo.m_surfaceNormal * dot(_direction, finalInfo.m_surfaceNormal));
+			
+			intersectInfo reflectInfo;
+			int reflectIndex = 0;
+			intersected = false;
+			objDistance = 99999999.0;
+			for	(int i = 1; i < bufferInstance.objectCount; i++)
+			{
+				intersectInfo tmpInfo = testIntersection(finalInfo.m_intersectPos, newDir, sceneObjects[i]);
+				
+				if(tmpInfo.m_didIntersect)
+				{
+					float tempD = distance(finalInfo.m_intersectPos, tmpInfo.m_intersectPos);
+					if(tempD < objDistance)
+					{
+						intersected = true;
+						objDistance = tempD;
+						reflectInfo = tmpInfo;
+						reflectIndex = i;
+					}
+				}
+			}
+
+			if(intersected)
+			{
+				vec3 lightDir = normalize(lightPosition - reflectInfo.m_intersectPos);
+				reflectCol = sceneObjects[reflectIndex].m_col * sceneObjects[reflectIndex].m_reflectivity;
+				reflectCol *= dot(lightDir, reflectInfo.m_surfaceNormal);
+			}
+		}
+
+
+		//					===== MULTISAMPLED SOFT SHADOWS =====
+		vec3 objCol = vec3(0);
+		intersectInfo shadInfo;
+		if(bufferInstance.doSS == 1)
+		{
+			vec3 shadStep = sceneObjects[index].m_col / ShadSamples;
+			newDir = vec3(0);
+
+			for(int i = 0; i < ShadSamples; i++)
+			{
+				newDir = normalize(getRandomPointOnLight() - finalInfo.m_intersectPos);
+				bool hitSomething = false;
+				for(int j = 1; j < bufferInstance.objectCount; j++)
+				{
+					if(sceneObjects[j].m_type != 1 && j != index)
+					{
+						shadInfo = testIntersection(finalInfo.m_intersectPos, newDir, sceneObjects[j]);
+				
+						if(shadInfo.m_didIntersect)
+						{
+							hitSomething = true;
+							j = 9999;
+						}
+					}
+				}
+
+				if(!hitSomething)
+				{
+					objCol += shadStep;
+				}
+			}
+		}
+		else
+		{
+			vec3 lightDir = normalize(lightPosition - finalInfo.m_intersectPos);
+			for(int i = 1; i < bufferInstance.objectCount; i++)
+			{
+				if(sceneObjects[i].m_type != 1 && i != index)
+				{
+					shadInfo = testIntersection(finalInfo.m_intersectPos, lightDir, sceneObjects[i]);
+
+					if(shadInfo.m_didIntersect)
+					{
+						i = 9999;
+					}
+				}
+			}
+			if(shadInfo.m_didIntersect)
+			{
+				objCol = vec3(0);
+			}
+			else
+			{
+				objCol = sceneObjects[index].m_col;
+			}
+		}
+
+		//				===== GLOBAL ILLUMINATION =====
+		vec3 globalIllumCol = vec3(0);
+		if(bufferInstance.doGI == 1)
+		{
+			for(int i = 0; i < GISamples; i++)
+			{
+				vec3 MCDirection = vec3(randNumGen(gl_GlobalInvocationID.x), randNumGen(gl_GlobalInvocationID.y), randNumGen(gl_GlobalInvocationID.x + gl_GlobalInvocationID.y));
+				MCDirection = ((MCDirection * 2.0) - 1.0);
+				if(dot(finalInfo.m_surfaceNormal, MCDirection) < 0)
+				{
+					MCDirection *= -1;
+				}
+			
+				intersectInfo GIInfo;
+				int GIIndex = 0;
+				intersected = false;
+				objDistance = 99999999.0;
+				for	(int i = 1; i < bufferInstance.objectCount; i++)
+				{
+					intersectInfo tmpInfo = testIntersection(finalInfo.m_intersectPos, MCDirection, sceneObjects[i]);
+				
+					if(tmpInfo.m_didIntersect)
+					{
+						float tempD = distance(finalInfo.m_intersectPos, tmpInfo.m_intersectPos);
+						if(tempD < objDistance)
+						{
+							intersected = true;
+							objDistance = tempD;
+							GIInfo = tmpInfo;
+							GIIndex = i;
+						}
+					}
+				}
+
+				if(intersected)
+				{
+					vec3 lightDir = normalize(lightPosition - GIInfo.m_intersectPos);
+					vec3 GIspec = SpecularColor(GIInfo, lightDir, finalInfo.m_intersectPos, MCDirection, GIIndex);
+
+					globalIllumCol = (5.0 * sceneObjects[GIIndex].m_col) * sceneObjects[index].m_col;
+					globalIllumCol *= dot(MCDirection, finalInfo.m_surfaceNormal);
+
+					globalIllumCol += GIspec;
+				}
+			}
+			if(GISamples > 0)
+			{
+				globalIllumCol /= GISamples;
+			}
+		}
+		
+
+
+		//					===== FINAL SHADE CALCULATIONS =====
+		vec3 lightDir = normalize(lightPosition - finalInfo.m_intersectPos);
+		vec3 specCol;
+		specCol = SpecularColor(finalInfo, lightDir, _origin, _direction, index);
+
+		float reflectMultiplier = 0.5;
+		shade += dot(lightDir, finalInfo.m_surfaceNormal) * ((objCol * (1-reflectMultiplier)) + (reflectCol * reflectMultiplier)) * sceneObjects[index].m_diffuse;
+		shade += specCol;
+		shade += globalIllumCol;
+
+		//Clamp values
+		shade.x = min(max(shade.x, 0.0f), 1.0f);
+		shade.y = min(max(shade.y, 0.0f), 1.0f);
+		shade.z = min(max(shade.z, 0.0f), 1.0f);
+	}
+	else if(intersected && index == 0)
+	{
+		//this else if statement handles the shading on the "light sphere"
+		shade = sceneObjects[index].m_col;
+	}
+	else
+	{
+		//Background Colour
+		shade = vec3(0,0,0.2);
+	}
+
+	return shade;
+}
+
+float camMapping(float xold, float xistart, float xiend, float xotstart, float xoend)
+{
+	return (xold - xistart) * ((xoend - xotstart) / (xiend - xistart)) + xotstart;
+}
+
+void InitialiseObjects1()
+{
+	//3 Spheres, plane beneath and light
+
+	//index 0 of sphere objects will always be the light source sphere
+	sceneObjects[0].m_pos = lightPosition;
+	sceneObjects[0].m_col = lightColour;
+	sceneObjects[0].m_rad = lightSphereRadius;
+	sceneObjects[0].m_type = 0;
+	sceneObjects[0].m_shininess = 50.0;
+	sceneObjects[0].m_diffuse = 1.0;
+	sceneObjects[0].m_reflectivity = 1.0;
+
+	//Floor
+	sceneObjects[1].m_pos = vec3(0, -15, 0);
+	sceneObjects[1].m_col = vec3(0, 0.4, 0);
+	sceneObjects[1].m_norm = vec3(0,1,0);
+	sceneObjects[1].m_type = 1;
+	sceneObjects[1].m_shininess = 50.0;
+	sceneObjects[1].m_diffuse = 1.0;
+	sceneObjects[1].m_reflectivity =1.0;
+
+	//Sphere 1
+	sceneObjects[2].m_pos = vec3(8, -3, 0);
+	sceneObjects[2].m_col = vec3(1, 0, 0);
+	sceneObjects[2].m_rad = 2.0;
+	sceneObjects[2].m_type = 0;
+	sceneObjects[2].m_shininess = 100.0;
+	sceneObjects[2].m_diffuse = 1.0;
+	sceneObjects[2].m_reflectivity = 1.0;
+
+	//Sphere 2
+	sceneObjects[3].m_pos = vec3(-2, 0, 0);
+	sceneObjects[3].m_col = vec3(0,1,0);
+	sceneObjects[3].m_rad = 2.0;
+	sceneObjects[3].m_type = 0;
+	sceneObjects[3].m_shininess = 100.0;
+	sceneObjects[3].m_diffuse = 1.0;
+	sceneObjects[3].m_reflectivity = 1.0;
+
+	//Sphere 3
+	sceneObjects[4].m_pos = vec3(2, 0, 5);
+	sceneObjects[4].m_col = vec3(0,0,1);
+	sceneObjects[4].m_rad = 2.0;
+	sceneObjects[4].m_type = 0;
+	sceneObjects[4].m_shininess = 50.0;
+	sceneObjects[4].m_diffuse = 1.0;
+	sceneObjects[4].m_reflectivity = 1.0;
+}
+
+void InitialiseObjects2()
+{
+	//Cornell Box
+
+	//index 0 of sphere objects will always be the light source sphere
+	sceneObjects[0].m_pos = lightPosition;
+	sceneObjects[0].m_col = lightColour;
+	sceneObjects[0].m_rad = lightSphereRadius;
+	sceneObjects[0].m_type = 0;
+	sceneObjects[0].m_shininess = 50.0;
+	sceneObjects[0].m_diffuse = 1.0;
+	sceneObjects[0].m_reflectivity = 1.0;
+	
+	//Floor
+	sceneObjects[1].m_pos = vec3(0,-15,0);
+	sceneObjects[1].m_col = vec3(0,0.5,0);
+	sceneObjects[1].m_norm = vec3(0,1,0);
+	sceneObjects[1].m_type = 1;
+	sceneObjects[1].m_shininess = 50.0;
+	sceneObjects[1].m_diffuse = 1.0;
+	sceneObjects[1].m_reflectivity = 1;
+
+	//Ceiling
+	sceneObjects[2].m_pos = vec3(0,15,0);
+	sceneObjects[2].m_col = vec3(0.5,0,0);
+	sceneObjects[2].m_norm = vec3(0,-1,0);
+	sceneObjects[2].m_type = 1;
+	sceneObjects[2].m_shininess = 50.0;
+	sceneObjects[2].m_diffuse = 1.0;
+	sceneObjects[2].m_reflectivity = 1;
+
+	//Left wall
+	sceneObjects[3].m_pos = vec3(-15,0,0);
+	sceneObjects[3].m_col = vec3(0.5,0.5,0);
+	sceneObjects[3].m_norm = vec3(1,0,0);
+	sceneObjects[3].m_type = 1;
+	sceneObjects[3].m_shininess = 50.0;
+	sceneObjects[3].m_diffuse = 1.0;
+	sceneObjects[3].m_reflectivity = 1;
+
+	//Right Wall
+	sceneObjects[4].m_pos = vec3(15,0,0);
+	sceneObjects[4].m_col = vec3(0,0.5,0.5);
+	sceneObjects[4].m_norm = vec3(-1,0,0);
+	sceneObjects[4].m_type = 1;
+	sceneObjects[4].m_shininess = 50.0;
+	sceneObjects[4].m_diffuse = 1.0;
+	sceneObjects[4].m_reflectivity = 1;
+
+	//Back Wall
+	sceneObjects[5].m_pos = vec3(0,0,15);
+	sceneObjects[5].m_col = vec3(0.5,0.5,0.5);
+	sceneObjects[5].m_norm = vec3(0,0,-1);
+	sceneObjects[5].m_type = 1;
+	sceneObjects[5].m_shininess = 50.0;
+	sceneObjects[5].m_diffuse = 1.0;
+	sceneObjects[5].m_reflectivity = 1;
+
+	//Front Wall
+	sceneObjects[6].m_pos = vec3(0,0,-15);
+	sceneObjects[6].m_col = vec3(0,0,0.5);
+	sceneObjects[6].m_norm = vec3(0,0,1);
+	sceneObjects[6].m_type = 1;
+	sceneObjects[6].m_shininess = 50.0;
+	sceneObjects[6].m_diffuse = 1.0;
+	sceneObjects[6].m_reflectivity = 1;
+
+	//Sphere
+	sceneObjects[7].m_pos = vec3(0,0,0);
+	sceneObjects[7].m_col = vec3(1, 1, 1);
+	sceneObjects[7].m_rad = 2.0;
+	sceneObjects[7].m_type = 0;
+	sceneObjects[7].m_shininess = 50.0;
+	sceneObjects[7].m_diffuse = 1.0;
+	sceneObjects[7].m_reflectivity = 1;
+}
+
+#pragma optionNV(unroll all)
+void main()
+{
+	switch(bufferInstance.sceneChoice)
+	{
+		case 0:
+			InitialiseObjects1();
+			break;
+		case 1:
+			InitialiseObjects2();
+			break;
+		default:
+	}
+
+	ivec2 pPos = ivec2(gl_GlobalInvocationID.xy);
+	vec2 pCoord = vec2(0);
+	vec2 dims = imageSize(u_Texture);
+	vec3 shade = vec3(0,0,0);
+	vec4 pixel = vec4(0,0,0,1);
+	float fov = 90.0;
+
+	vec2 m_output = vec2(0);
+	vec3 direction = vec3(0);
+	
+		for (float i = 0; i < AASamples; i++)
+		{
+			pCoord.x = float(pPos.x) + (i / AASamples);
+			pCoord.y = float(pPos.y) + (i / AASamples);
+
+			m_output.x = camMapping(pCoord.x, 0, dims.x, -1, 1);
+			m_output.y = camMapping(pCoord.y, 0, dims.y, -1, 1);
+
+			vec4 nearPlane = vec4(m_output.x, m_output.y, -1, 1);
+			vec4 farPlane = vec4(m_output.x, m_output.y,  1, 1);
+
+			vec4 tfNear = bufferInstance.TransformMat * nearPlane;
+			vec4 tfFar = bufferInstance.TransformMat * farPlane;
+
+			vec3 nearProjection = vec3(tfNear.x, tfNear.y, tfNear.z) / tfNear.w;
+			vec3 farProjection = vec3(tfFar.x, tfFar.y, tfFar.z) / tfFar.w;
+
+			direction = farProjection - nearProjection;
+
+			shade += vec3(traceRay(nearProjection, normalize(direction)));
+		}
+
+		shade /= AASamples;
+
+	pixel = vec4(shade, 1.0);
+	imageStore(u_Texture, ivec2(gl_GlobalInvocationID.xy), pixel);
+}

@@ -1,0 +1,39 @@
+﻿  Program.cpp
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(14,12): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,114): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,114): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,114): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,114): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,114): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,100): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,100): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,100): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,100): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,100): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,86): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,86): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,86): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,86): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,86): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,73): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,73): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,73): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,73): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(23,73): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,63): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,63): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,63): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,63): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,63): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,45): warning C4244: 'argument': conversion from 'T' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,45): warning C4244:         with
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,45): warning C4244:         [
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,45): warning C4244:             T=float
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(162,45): warning C4244:         ]
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(185,26): warning C4244: 'argument': conversion from 'double' to 'float', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(233,21): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(241,19): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(243,31): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(249,21): warning C4244: 'initializing': conversion from 'float' to 'int', possible loss of data
+E:\Yr3\IndividualProject\RayTracerPrototype\RayTracerPrototype\Program.cpp(251,31): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+  RayTracerPrototype.vcxproj -> E:\Yr3\IndividualProject\RayTracerPrototype\x64\Debug\RayTracerPrototype.exe
