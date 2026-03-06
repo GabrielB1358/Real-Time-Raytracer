@@ -2,6 +2,13 @@
 
 A real-time ray-tracing application showing a basic scene with simple shapes and a visible light source.
 
+# Controls
+W, A, S, D   - Lateral Movement
+Tab          - Toggle focus between Scene and UI
+Spacebar     - Descend
+LCtrl        - Ascend
+LShift       - Speed boost (while already moving)
+
 # Overview
 - Written in C++, Uses OpenGL for all rendering
   - Specifically uses OpenGL's Compute Shader functionality to run all ray tracing calculations on the GPU
